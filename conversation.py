@@ -15,16 +15,26 @@ from typing import Optional
 from crm import create_lead
 
 EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
-PHONE_RE = re.compile(r"\d{7,}")
+PHONE_RE = re.compile(r"(?<!\d)\d{10}(?!\d)")
+# A run of 7+ digits is clearly an attempted phone number (as opposed to a
+# stray short number) — used to catch a malformed phone even when a valid
+# email is also present in the same message, e.g. "89034526178,maya07@gmail.com".
+PHONE_ATTEMPT_RE = re.compile(r"\d{7,}")
 
 
 def is_valid_contact(text: str) -> bool:
-    """A contact answer must contain something that looks like an email or a
-    phone number (7+ digits once spaces/dashes/parens are stripped) — otherwise
-    we'd happily accept any stray sentence as the visitor's contact info."""
+    """A contact answer must contain either a valid email (has an @ and a
+    domain) or a valid phone number (exactly 10 digits once spaces/dashes/
+    parens/plus signs are stripped) — otherwise we'd happily accept any stray
+    sentence as the visitor's contact info. If a phone-number-shaped digit
+    run is present, it must be exactly 10 digits even when an email is also
+    given — a valid email shouldn't mask an obviously wrong phone number."""
+    digits_only = re.sub(r"[\s\-()+]", "", text)
+    phone_attempts = PHONE_ATTEMPT_RE.findall(digits_only)
+    if any(len(run) != 10 for run in phone_attempts):
+        return False
     if EMAIL_RE.search(text):
         return True
-    digits_only = re.sub(r"[\s\-()]", "", text)
     return bool(PHONE_RE.search(digits_only))
 
 HISTORY_TURNS = 6  # prior messages (user+assistant) fed back to the model as context
@@ -85,7 +95,7 @@ def advance_lead_flow(session: dict, message: str, session_id: str) -> Optional[
 
     if stage == "contact":
         if not is_valid_contact(text):
-            return "That doesn't look like a valid email or phone number — could you share one so our team can reach you?"
+            return "That doesn't look like a valid email or phone number — please enter a valid email (e.g. name@example.com) or a 10-digit phone number."
         session["lead"]["contact"] = text
         session["lead_stage"] = "project"
         return "Great — and briefly, what are you looking to build or get help with?"
