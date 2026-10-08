@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tresvance Assistant</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --bubble-bot: #1f232c;
+    --bubble-user: #4f6df5;
+    --text: #e8e9ed;
+    --muted: #9aa0ab;
+    --accent: #4f6df5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+  }
+  .app {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  header {
+    padding: 16px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid #262a33;
+  }
+  header h1 { font-size: 16px; margin: 0; }
+  header p { font-size: 12px; color: var(--muted); margin: 4px 0 0; }
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .msg {
+    max-width: 80%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+  }
+  .bot { align-self: flex-start; background: var(--bubble-bot); border-bottom-left-radius: 4px; }
+  .user { align-self: flex-end; background: var(--bubble-user); color: white; border-bottom-right-radius: 4px; }
+  .typing { align-self: flex-start; color: var(--muted); font-size: 13px; padding: 0 14px; }
+  form {
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    background: var(--panel);
+    border-top: 1px solid #262a33;
+  }
+  input {
+    flex: 1;
+    background: #1f232c;
+    border: 1px solid #2c313c;
+    color: var(--text);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
+    outline: none;
+  }
+  input:focus { border-color: var(--accent); }
+  button {
+    background: var(--accent);
+    border: none;
+    color: white;
+    padding: 0 18px;
+    border-radius: 10px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Tresvance Assistant</h1>
+    <p>Ask about our services, projects, or how to get in touch.</p>
+  </header>
+  <div id="messages"></div>
+  <form id="form">
+    <input id="input" type="text" placeholder="Type your question…" autocomplete="off" />
+    <button id="send" type="submit">Send</button>
+  </form>
+</div>
+<script>
+  const messagesEl = document.getElementById("messages");
+  const form = document.getElementById("form");
+  const input = document.getElementById("input");
+  const sendBtn = document.getElementById("send");
+
+  const SESSION_KEY = "tv_widget_session_id";
+  let sessionId = localStorage.getItem(SESSION_KEY);
+  if (!sessionId) {
+    sessionId = (window.crypto && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : "sess-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+    localStorage.setItem(SESSION_KEY, sessionId);
+  }
+
+  function addMessage(text, who) {
+    const div = document.createElement("div");
+    div.className = `msg ${who}`;
+    div.textContent = text;
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return div;
+  }
+
+  addMessage("Hi! I'm Tresvance's assistant.", "bot");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    addMessage(text, "user");
+    input.value = "";
+    sendBtn.disabled = true;
+
+    const typingEl = document.createElement("div");
+    typingEl.className = "typing";
+    typingEl.textContent = "Tresvance assistant is typing…";
+    messagesEl.appendChild(typingEl);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, session_id: sessionId }),
+      });
+      const data = await res.json();
+      typingEl.remove();
+      addMessage(data.answer, "bot");
+    } catch (err) {
+      typingEl.remove();
+      addMessage("Sorry, something went wrong reaching the assistant.", "bot");
+    } finally {
+      sendBtn.disabled = false;
+      input.focus();
+    }
+  });
+</script>
+</body>
+</html>

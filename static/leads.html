@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tresvance Assistant — Leads</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --text: #e8e9ed; --muted: #9aa0ab;
+    --accent: #4f6df5; --border: #262a33;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 32px;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .note { font-size: 12px; color: var(--muted); margin: 0 0 24px; }
+  .lead {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+  }
+  .lead-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .lead-name { font-size: 15px; font-weight: 600; }
+  .lead-time { font-size: 12px; color: var(--muted); }
+  .lead-field { font-size: 13px; margin-top: 6px; }
+  .lead-field b { color: var(--muted); font-weight: 500; }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; font-size: 12px; color: var(--accent); }
+  .convo { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .convo .msg {
+    font-size: 12px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    max-width: 85%;
+    white-space: pre-wrap;
+  }
+  .convo .user { align-self: flex-end; background: var(--accent); color: #fff; }
+  .convo .assistant { align-self: flex-start; background: #1f232c; }
+  .empty { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>Captured Leads</h1>
+<p class="note">Internal view, reads from leads.jsonl. No authentication — lock this down
+  (or remove it) before this backend is reachable from the public internet.</p>
+<div id="leads">Loading…</div>
+<script>
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str == null ? "" : String(str);
+    return div.innerHTML;
+  }
+
+  fetch("/api/leads")
+    .then((res) => res.json())
+    .then((leads) => {
+      const el = document.getElementById("leads");
+      if (!leads.length) {
+        el.innerHTML = '<p class="empty">No leads captured yet.</p>';
+        return;
+      }
+      el.innerHTML = leads
+        .map((lead) => {
+          const time = new Date(lead.timestamp).toLocaleString();
+          const convo = (lead.conversation || [])
+            .map(
+              (m) =>
+                `<div class="msg ${m.role === "user" ? "user" : "assistant"}">${escapeHtml(m.content)}</div>`
+            )
+            .join("");
+          return `
+            <div class="lead">
+              <div class="lead-top">
+                <span class="lead-name">${escapeHtml(lead.name || "(no name)")}</span>
+                <span class="lead-time">${escapeHtml(time)}</span>
+              </div>
+              <div class="lead-field"><b>Contact:</b> ${escapeHtml(lead.contact || "-")}</div>
+              <div class="lead-field"><b>Project:</b> ${escapeHtml(lead.project || "-")}</div>
+              <details>
+                <summary>View conversation</summary>
+                <div class="convo">${convo}</div>
+              </details>
+            </div>
+          `;
+        })
+        .join("");
+    })
+    .catch(() => {
+      document.getElementById("leads").innerHTML = '<p class="empty">Failed to load leads.</p>';
+    });
+</script>
+</body>
+</html>
