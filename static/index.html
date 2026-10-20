@@ -125,10 +125,14 @@
 
   addMessage("Hi! I'm Tresvance's assistant.", "bot");
 
+  const REQUEST_TIMEOUT_MS = 20000;
+  let isSending = false;
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const text = input.value.trim();
-    if (!text) return;
+    if (!text || isSending) return;
+    isSending = true;
     addMessage(text, "user");
     input.value = "";
     sendBtn.disabled = true;
@@ -139,19 +143,42 @@
     messagesEl.appendChild(typingEl);
     messagesEl.scrollTop = messagesEl.scrollHeight;
 
+    const controller = window.AbortController ? new AbortController() : null;
+    let timedOut = false;
+    const timeoutId = controller
+      ? setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, REQUEST_TIMEOUT_MS)
+      : null;
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text, session_id: sessionId }),
+        signal: controller ? controller.signal : undefined,
       });
+      if (timeoutId) clearTimeout(timeoutId);
+      if (!res.ok) throw new Error("http_error_" + res.status);
       const data = await res.json();
       typingEl.remove();
-      addMessage(data.answer, "bot");
+      if (data && typeof data.answer === "string") {
+        addMessage(data.answer, "bot");
+      } else {
+        addMessage("Sorry, I got an unexpected reply from the assistant. Please try again.", "bot");
+      }
     } catch (err) {
+      if (timeoutId) clearTimeout(timeoutId);
       typingEl.remove();
-      addMessage("Sorry, something went wrong reaching the assistant.", "bot");
+      addMessage(
+        timedOut
+          ? "That's taking longer than expected. Please try again."
+          : "Sorry, something went wrong reaching the assistant. Please try again.",
+        "bot"
+      );
     } finally {
+      isSending = false;
       sendBtn.disabled = false;
       input.focus();
     }

@@ -91,6 +91,8 @@
   var closeBtn = panel.querySelector(".tv-widget-close");
 
   var greeted = false;
+  var isSending = false;
+  var REQUEST_TIMEOUT_MS = 20000;
 
   function addMessage(text, who) {
     var div = document.createElement("div");
@@ -128,7 +130,8 @@
   closeBtn.addEventListener("click", closePanel);
 
   function sendMessage(text) {
-    if (!text) return;
+    if (!text || isSending) return;
+    isSending = true;
     addMessage(text, "user");
     sendBtn.disabled = true;
 
@@ -138,23 +141,46 @@
     messagesEl.appendChild(typingEl);
     messagesEl.scrollTop = messagesEl.scrollHeight;
 
+    var controller = window.AbortController ? new AbortController() : null;
+    var timedOut = false;
+    var timeoutId = controller
+      ? setTimeout(function () {
+          timedOut = true;
+          controller.abort();
+        }, REQUEST_TIMEOUT_MS)
+      : null;
+
     fetch(apiBase + "/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: text, session_id: sessionId }),
+      signal: controller ? controller.signal : undefined,
     })
       .then(function (res) {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (!res.ok) {
+          throw new Error("http_error_" + res.status);
+        }
         return res.json();
       })
       .then(function (data) {
         typingEl.remove();
-        addMessage(data.answer, "bot");
+        if (data && typeof data.answer === "string") {
+          addMessage(data.answer, "bot");
+        } else {
+          addMessage("Sorry, I got an unexpected reply from the assistant. Please try again.", "bot");
+        }
       })
       .catch(function () {
+        if (timeoutId) clearTimeout(timeoutId);
         typingEl.remove();
-        addMessage("Sorry, something went wrong reaching the assistant.", "bot");
+        var message = timedOut
+          ? "That's taking longer than expected. Please try again."
+          : "Sorry, something went wrong reaching the assistant. Please try again.";
+        addMessage(message, "bot");
       })
       .finally(function () {
+        isSending = false;
         sendBtn.disabled = false;
         input.focus();
       });
